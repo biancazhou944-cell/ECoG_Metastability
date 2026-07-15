@@ -1,0 +1,5 @@
+condition,delta,theta,alpha,beta,broadband
+Ketamine,0.033,-0.030,-0.020,-0.087,0.141
+Medetomidine,0.103,0.006,0.016,0.022,0.230
+Propofol,0.070,-0.030,-0.093,-0.141,0.169
+Sleep,0.043,0.121,0.039,0.047,0.049

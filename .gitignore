@@ -1,0 +1,22 @@
+# Raw data and local environments
+data/
+.venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Editor, operating-system, and task caches
+.DS_Store
+.vscode/
+.codex_tmp/
+
+# Temporary render directories
+tmp/
+output/
+outputs/
+
+# Recreated by the primary analysis before main Figure 2 is assembled
+figures/intermediate/
