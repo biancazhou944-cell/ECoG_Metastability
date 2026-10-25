@@ -1,0 +1,44 @@
+{
+  "scope": "Synthetic 64-channel, 120-second, 1000-Hz input; 54 retained channels; five bandpass outputs plus wPLI preprocessing. Excludes I/O, Hilbert, metric calculation and plotting.",
+  "method": "Separate single-thread processes, one warm-up, median of five repeats; same input seed and filters. The reference repeats preprocessing per band using SciPy.",
+  "reference": {
+    "mode": "reference",
+    "seconds": [
+      1.678459124872461,
+      1.634846249828115,
+      1.4943725420162082,
+      1.5257062918972224,
+      1.505000083008781
+    ],
+    "median_seconds": 1.5257062918972224,
+    "peak_rss_bytes": 278364160,
+    "numpy": "2.4.4",
+    "scipy": "1.17.1",
+    "python": "3.14.2"
+  },
+  "shared": {
+    "mode": "shared",
+    "seconds": [
+      0.4302080830093473,
+      0.43111574999056756,
+      0.4324021670036018,
+      0.4292724998667836,
+      0.4356908749323338
+    ],
+    "median_seconds": 0.43111574999056756,
+    "peak_rss_bytes": 213975040,
+    "numpy": "2.4.4",
+    "scipy": "1.17.1",
+    "python": "3.14.2"
+  },
+  "max_abs_errors": {
+    "delta": 0.0,
+    "theta": 0.0,
+    "alpha": 0.0,
+    "beta": 0.0,
+    "broadband": 0.0,
+    "wpli_input": 0.0
+  },
+  "speedup": 3.5389713596188574,
+  "rss_reduction_fraction": 0.2313125367863449
+}

@@ -1,0 +1,62 @@
+{
+  "dataset": "George_KT",
+  "duration_sec": 120,
+  "note": "Four retained channels after the full 64-candidate QC/CAR reference; six pairs.",
+  "states": {
+    "Awake": {
+      "delta": {
+        "optimized": 0.1931359812929864,
+        "scalar_reference": 0.1931359812929864,
+        "absolute_error": 0.0
+      },
+      "theta": {
+        "optimized": 0.2464673871271108,
+        "scalar_reference": 0.2464673871271108,
+        "absolute_error": 0.0
+      },
+      "alpha": {
+        "optimized": 0.1453230210795656,
+        "scalar_reference": 0.1453230210795656,
+        "absolute_error": 0.0
+      },
+      "beta": {
+        "optimized": 0.17086781293264494,
+        "scalar_reference": 0.17086781293264494,
+        "absolute_error": 0.0
+      },
+      "broadband": {
+        "optimized": 0.1630650222423744,
+        "scalar_reference": 0.16306502224237437,
+        "absolute_error": 2.7755575615628914e-17
+      }
+    },
+    "Unconscious": {
+      "delta": {
+        "optimized": 0.20623795480071264,
+        "scalar_reference": 0.20623795480071264,
+        "absolute_error": 0.0
+      },
+      "theta": {
+        "optimized": 0.11812577657313,
+        "scalar_reference": 0.11812577657313,
+        "absolute_error": 0.0
+      },
+      "alpha": {
+        "optimized": 0.20164697133768225,
+        "scalar_reference": 0.20164697133768225,
+        "absolute_error": 0.0
+      },
+      "beta": {
+        "optimized": 0.13704496330519353,
+        "scalar_reference": 0.13704496330519353,
+        "absolute_error": 0.0
+      },
+      "broadband": {
+        "optimized": 0.13806006966097153,
+        "scalar_reference": 0.13806006966097153,
+        "absolute_error": 0.0
+      }
+    }
+  },
+  "max_absolute_error": 2.7755575615628914e-17
+}

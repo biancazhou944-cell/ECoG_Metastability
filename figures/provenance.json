@@ -1,0 +1,15 @@
+{
+  "source_sha256": {
+    "analysis_64.json": "b5aa27040b5c47892adcd6d33b2e7e688e87cdf9d96803d67fc003290d1b3a7d",
+    "analysis_128.json": "f6b1098c7fd0db44937e9f9299a402d37665993f75f120c121b6cd16e2462035"
+  },
+  "script_sha256": "d8e59099a6c9f7bdb36ec22e5f2a752a5124733b5151421e538a8b4f363473c1",
+  "visualization_sha256": "124fe667f0a699a1dabd516bb58cc13d3d4bb06bc462b214e4d1854b095b1454",
+  "scales": {
+    "node_vmin": -0.12868787497282028,
+    "node_vmax": 0.12868787497282028,
+    "heatmap_vmin": -0.21607054149413718,
+    "heatmap_vmax": 0.21607054149413718
+  },
+  "schema_version": 2
+}

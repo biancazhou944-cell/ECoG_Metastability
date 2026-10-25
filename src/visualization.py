@@ -1,7 +1,6 @@
 """Figures produced directly from the empirical ECoG analysis."""
 
 import os
-import ssl
 import warnings
 import zipfile
 from pathlib import Path
@@ -30,9 +29,6 @@ LAYOUT_DIR = PROJECT_ROOT / 'assets' / 'electrode_layouts'
 FIGURE_DPI = 300
 NON_AWAKE_LABEL = 'Anesthesia/sleep'
 
-for directory in (SUPPLEMENTARY_DIR, INTERMEDIATE_DIR, LAYOUT_DIR):
-    directory.mkdir(parents=True, exist_ok=True)
-
 plt.rcParams.update({
     'axes.spines.top': False,
     'axes.spines.right': False,
@@ -54,27 +50,21 @@ NEUROTYCHO_LAYOUTS = {
 }
 
 
-def _savefig(path, fig=None):
+def _savefig(path, fig=None, tight_rect=None):
     if fig is None:
         fig = plt.gcf()
     path.parent.mkdir(parents=True, exist_ok=True)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', UserWarning)
-        fig.tight_layout()
+        fig.tight_layout(rect=tight_rect)
     fig.savefig(path, dpi=FIGURE_DPI, bbox_inches='tight')
     plt.close(fig)
 
 
 def _download_file(url, destination):
-    last_error = None
-    for context in (None, ssl._create_unverified_context()):
-        try:
-            with urlopen(url, context=context) as response, destination.open('wb') as output:
-                output.write(response.read())
-            return
-        except Exception as exc:
-            last_error = exc
-    raise last_error
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with urlopen(url, timeout=30) as response, destination.open('wb') as output:
+        output.write(response.read())
 
 
 def _load_neurotycho_layout(monkey):
@@ -89,9 +79,8 @@ def _load_neurotycho_layout(monkey):
                 members = [name for name in archive.namelist() if name.endswith(info['mat'])]
                 if not members:
                     raise FileNotFoundError(f"{info['mat']} not found in {archive_path}")
-                extracted = Path(archive.extract(members[0], LAYOUT_DIR))
-                if extracted != mat_path:
-                    extracted.replace(mat_path)
+                with archive.open(members[0]) as source, mat_path.open('wb') as target:
+                    target.write(source.read())
         finally:
             archive_path.unlink(missing_ok=True)
 
@@ -258,7 +247,7 @@ def plot_condition_dumbbells(kuramoto_results, wpli_results):
         fontsize=9.5,
         bbox_to_anchor=(0.5, 1.01),
     )
-    _savefig(SUPPLEMENTARY_DIR / 'figS2_condition_shifts.png', fig)
+    _savefig(SUPPLEMENTARY_DIR / 'condition_shifts.png', fig, tight_rect=(0, 0, 1, .90))
 
 
 def plot_electrode_layouts(bad_channels):
@@ -331,7 +320,7 @@ def plot_electrode_layouts(bad_channels):
         bbox_to_anchor=(0.5, 1.02),
     )
     fig.suptitle('NeuroTycho ECoG Layout and Current Analysis Subset', fontsize=14, y=1.06)
-    _savefig(SUPPLEMENTARY_DIR / 'figS1_electrode_layouts.png', fig)
+    _savefig(SUPPLEMENTARY_DIR / 'electrode_layouts.png', fig)
 
 
 def plot_wpli_topography(wpli_node_strengths, band='broadband'):

@@ -1,17 +1,30 @@
+import warnings
+
 import numpy as np
-from scipy.stats import t as t_dist
 from scipy.integrate import quad
 
 
+def _paired_differences(aw_vals, un_vals):
+    aw, un = np.asarray(aw_vals, dtype=float), np.asarray(un_vals, dtype=float)
+    if aw.ndim != 1 or un.shape != aw.shape or len(aw) == 0:
+        raise ValueError('Paired samples must be non-empty, one-dimensional and equally sized')
+    if not np.isfinite(aw).all() or not np.isfinite(un).all():
+        raise ValueError('Paired samples must be finite; missing values cannot be replaced by zero')
+    return un-aw
+
+
 def permutation_test(aw_vals, un_vals, n_perm=10000):
-    diffs = np.array(un_vals) - np.array(aw_vals)
+    diffs = _paired_differences(aw_vals, un_vals)
     obs_diff = np.mean(diffs)
     n = len(diffs)
     if n <= 20:
-        signs = np.array(np.meshgrid(*([[-1, 1]] * n))).T.reshape(-1, n)
-        null_means = np.mean(signs * diffs, axis=1)
-        p = np.mean(np.abs(null_means) >= abs(obs_diff) - 1e-15)
-        return float(p), float(obs_diff)
+        count = 0
+        for start in range(0, 2**n, 4096):
+            codes = np.arange(start, min(start+4096, 2**n), dtype=np.uint32)
+            signs = 2*((codes[:, None] >> np.arange(n)) & 1).astype(np.int8)-1
+            null_means = (signs @ diffs)/n
+            count += np.count_nonzero(np.abs(null_means) >= abs(obs_diff)-1e-15)
+        return float(count/2**n), float(obs_diff)
 
     rng = np.random.default_rng(42)
     count = 0
@@ -19,16 +32,19 @@ def permutation_test(aw_vals, un_vals, n_perm=10000):
         signs = rng.choice([-1, 1], size=len(diffs))
         if abs(np.mean(diffs * signs)) >= abs(obs_diff):
             count += 1
-    return count / n_perm, float(obs_diff)
+    return (count+1) / (n_perm+1), float(obs_diff)
 
 
 def cohens_d(aw_vals, un_vals):
-    diffs = np.array(un_vals) - np.array(aw_vals)
-    return float(np.mean(diffs) / (np.std(diffs, ddof=1) + 1e-12))
+    return _paired_d_from_diffs(_paired_differences(aw_vals, un_vals))
 
 
 def benjamini_hochberg(p_values, alpha=0.05):
     n = len(p_values)
+    if n == 0:
+        return [], []
+    if not np.isfinite(p_values).all() or np.any(np.asarray(p_values) < 0) or np.any(np.asarray(p_values) > 1):
+        raise ValueError('p-values must be finite and in [0, 1]')
     sorted_idx = np.argsort(p_values)
     sorted_p = np.array(p_values)[sorted_idx]
     adj_p = np.empty(n)
@@ -39,15 +55,19 @@ def benjamini_hochberg(p_values, alpha=0.05):
 
 
 def bootstrap_ci_cohens_d(aw_vals, un_vals, n_boot=5000, ci=0.95):
-    diffs = np.array(un_vals) - np.array(aw_vals)
+    diffs = _paired_differences(aw_vals, un_vals)
     n = len(diffs)
     rng = np.random.default_rng(42)
-    boot_d = []
-    for _ in range(n_boot):
-        idx = rng.integers(0, n, size=n)
-        bd = diffs[idx]
-        std = np.std(bd, ddof=1)
-        boot_d.append(np.mean(bd) / (std + 1e-12))
+    if n < 2 or n_boot < 1 or not 0 < ci < 1:
+        raise ValueError('Bootstrap requires >=2 pairs, positive draws and 0 < ci < 1')
+    bd = diffs[rng.integers(0, n, size=(n_boot, n))]
+    std = np.std(bd, axis=1, ddof=1)
+    valid = std > 0
+    if not valid.all():
+        warnings.warn(f'{np.count_nonzero(~valid)}/{n_boot} bootstrap samples have undefined effect size', stacklevel=2)
+    boot_d = bd.mean(axis=1)[valid]/std[valid]
+    if not len(boot_d):
+        return np.nan, np.nan
     lo = np.percentile(boot_d, (1 - ci) / 2 * 100)
     hi = np.percentile(boot_d, (1 + ci) / 2 * 100)
     return lo, hi
@@ -57,7 +77,8 @@ def _paired_d_from_diffs(diffs):
     diffs = np.asarray(diffs, dtype=float)
     if len(diffs) < 2:
         return np.nan
-    return float(np.mean(diffs) / (np.std(diffs, ddof=1) + 1e-12))
+    std = np.std(diffs, ddof=1)
+    return float(np.mean(diffs)/std) if std > 0 else np.nan
 
 
 def compute_group_diagnostics(all_tests, datasets):
@@ -75,6 +96,8 @@ def compute_group_diagnostics(all_tests, datasets):
 
     diagnostics = {}
     for name, band, aw, un, d, p in all_tests:
+        if len(aw) != len(dataset_names) or len(un) != len(dataset_names):
+            raise ValueError('Grouping requires complete pairs in the declared dataset order')
         aw = np.asarray(aw, dtype=float)
         un = np.asarray(un, dtype=float)
         diffs = un - aw
@@ -112,6 +135,7 @@ def compute_group_diagnostics(all_tests, datasets):
             'condition_d': _paired_d_from_diffs(cond_diffs),
             'condition_p': cond_p,
             'monkey_diffs': dict(zip(monkeys, monkey_diffs)),
+            'monkey_mean_signflip_p': permutation_test(np.zeros(len(monkey_diffs)), monkey_diffs)[0],
             'loo_condition_d': loo_condition_d,
             'loo_monkey_d': loo_monkey_d,
         }
@@ -119,74 +143,80 @@ def compute_group_diagnostics(all_tests, datasets):
 
 
 def bayes_factor_paired(aw_vals, un_vals, r=0.707):
-    """JZS Bayes Factor for paired samples (Rouder et al., 2009)."""
-    diffs = np.array(un_vals) - np.array(aw_vals)
+    """Two-sided JZS BF10, Rouder et al. (2009), eq. 1.
+
+    Matches the formula used by Pingouin/JASP/BayesFactor. The auxiliary
+    inverse-gamma mixing density is g**(-3/2) exp(-1/(2g))/sqrt(2*pi).
+    """
+    diffs = _paired_differences(aw_vals, un_vals)
     n = len(diffs)
-    t_stat = np.mean(diffs) / (np.std(diffs, ddof=1) / np.sqrt(n) + 1e-12)
+    if n < 2 or r <= 0 or not np.isfinite(r):
+        raise ValueError('JZS requires >=2 pairs and a finite positive prior scale')
+    std = np.std(diffs, ddof=1)
+    if std == 0:
+        return np.nan
+    t_stat = np.mean(diffs) / (std / np.sqrt(n))
     df = n - 1
 
     def integrand(g):
-        se_adj = np.sqrt(1 + n * g)
-        return (t_dist.pdf(t_stat / se_adj, df) / se_adj
-                * (2 / np.pi / r**2) * np.exp(-g / (2 * r**2)) * (g > 0))
+        scale = 1+n*g*r*r
+        # Integrate the likelihood ratio directly to avoid tiny H0 densities.
+        log_value = (-.5*np.log(scale)
+                     -(df+1)/2*np.log1p(t_stat*t_stat/(df*scale))
+                     +(df+1)/2*np.log1p(t_stat*t_stat/df)
+                     -.5*np.log(2*np.pi)-1.5*np.log(g)-1/(2*g))
+        return np.exp(log_value)
 
-    marginal_h1, _ = quad(integrand, 0, np.inf, limit=100)
-    marginal_h0 = t_dist.pdf(t_stat, df)
-    if marginal_h1 < 1e-20:
-        return 0.01
-    return marginal_h1 / marginal_h0
+    return float(quad(integrand, 0, np.inf, epsabs=1e-10, epsrel=1e-9, limit=200)[0])
 
 
 def collect_tests(kuramoto_results, wpli_results, fcd_results, coal_results, datasets, analysis_bands):
-    """Collect all test data and run statistical analysis."""
-    all_tests = []
-
+    """Fail on incomplete/nonfinite pairs; never fabricate measurements or shift IDs."""
+    if len(datasets) < 2:
+        raise ValueError('At least two complete dataset pairs are required')
+    specifications = []
     for band in analysis_bands:
-        aw_sync, un_sync, aw_meta, un_meta = [], [], [], []
-        for ds_name in datasets:
-            ka = kuramoto_results[ds_name].get('Awake', {}).get(band, {})
-            ku = kuramoto_results[ds_name].get('Unconscious', {}).get(band, {})
-            if ka and ku:
-                aw_sync.append(ka['sync']); un_sync.append(ku['sync'])
-                aw_meta.append(ka['meta']); un_meta.append(ku['meta'])
-        if aw_sync:
-            p_s, _ = permutation_test(aw_sync, un_sync)
-            d_s = cohens_d(aw_sync, un_sync)
-            all_tests.append(('Kur_Sync', band, aw_sync, un_sync, d_s, p_s))
-            p_m, _ = permutation_test(aw_meta, un_meta)
-            d_m = cohens_d(aw_meta, un_meta)
-            all_tests.append(('Kur_Meta', band, aw_meta, un_meta, d_m, p_m))
+        specifications.extend([('Kur_Sync', band, kuramoto_results, (band, 'sync')),
+                               ('Kur_Meta', band, kuramoto_results, (band, 'meta'))])
+    specifications.extend(('wPLI', band, wpli_results, (band,)) for band in analysis_bands)
+    specifications.extend([('FCD_Var', 'delta', fcd_results, ()),
+                           ('H_norm', 'delta', coal_results, ())])
+    tests = []
+    for metric, band, source, path in specifications:
+        awake, unconscious = [], []
+        for dataset in datasets:
+            for state, target in [('Awake', awake), ('Unconscious', unconscious)]:
+                try:
+                    value = source[dataset][state]
+                    for key in path:
+                        value = value[key]
+                    value = float(value)
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError(f'Missing {dataset}/{state}/{metric}/{band}') from exc
+                if not np.isfinite(value):
+                    raise ValueError(f'Nonfinite {dataset}/{state}/{metric}/{band}')
+                target.append(value)
+        p, _ = permutation_test(awake, unconscious)
+        tests.append((metric, band, awake, unconscious, cohens_d(awake, unconscious), p))
+    adjusted, significant = benjamini_hochberg([test[5] for test in tests])
+    factors = [bayes_factor_paired(test[2], test[3]) for test in tests]
+    return tests, adjusted, significant, factors
 
-    for band in analysis_bands:
-        aw_w, un_w = [], []
-        for ds_name in datasets:
-            aw_w.append(wpli_results[ds_name].get('Awake', {}).get(band, 0))
-            un_w.append(wpli_results[ds_name].get('Unconscious', {}).get(band, 0))
-        p_w, _ = permutation_test(aw_w, un_w)
-        d_w = cohens_d(aw_w, un_w)
-        all_tests.append(('wPLI', band, aw_w, un_w, d_w, p_w))
 
-    aw_f, un_f, aw_h, un_h = [], [], [], []
-    for ds_name in datasets:
-        aw_f.append(fcd_results[ds_name].get('Awake', 0))
-        un_f.append(fcd_results[ds_name].get('Unconscious', 0))
-        aw_h.append(coal_results[ds_name].get('Awake', 0))
-        un_h.append(coal_results[ds_name].get('Unconscious', 0))
-    p_f, _ = permutation_test(aw_f, un_f); d_f = cohens_d(aw_f, un_f)
-    all_tests.append(('FCD_Var', 'delta', aw_f, un_f, d_f, p_f))
-    p_h, _ = permutation_test(aw_h, un_h); d_h = cohens_d(aw_h, un_h)
-    all_tests.append(('H_norm', 'delta', aw_h, un_h, d_h, p_h))
-
-    # FDR correction
-    p_orig = [t[5] for t in all_tests]
-    p_fdr, sig_fdr = benjamini_hochberg(p_orig)
-
-    # Bayes factors
-    bf_cache = []
-    for name, band, aw, un, d, p in all_tests:
-        bf_cache.append(bayes_factor_paired(aw, un))
-
-    return all_tests, p_fdr, sig_fdr, bf_cache
+def statistical_rows(kuramoto, wpli, fcd, coalition, datasets, bands):
+    """Full-precision records for JSON/CSV and plotting."""
+    tests, adjusted, significant, factors = collect_tests(kuramoto, wpli, fcd, coalition, datasets, bands)
+    diagnostics = compute_group_diagnostics(tests, datasets)
+    rows = []
+    for index, (metric, band, aw, un, effect, p) in enumerate(tests):
+        low, high = bootstrap_ci_cohens_d(aw, un)
+        rows.append({'metric': metric, 'band': band, 'dataset_ids': list(datasets),
+                     'n_pairs': len(aw), 'awake': aw, 'unconscious': un,
+                     'mean_difference': float(np.mean(np.asarray(un)-aw)),
+                     'd': effect, 'ci_lo': float(low), 'ci_hi': float(high),
+                     'p_raw': p, 'p_fdr': adjusted[index], 'fdr_significant': bool(significant[index]),
+                     'bf': factors[index], 'diagnostics': diagnostics[(metric, band)]})
+    return rows
 
 
 def print_stats_table(all_tests, p_fdr, sig_fdr, bf_cache):
@@ -198,7 +228,8 @@ def print_stats_table(all_tests, p_fdr, sig_fdr, bf_cache):
         ci_lo, ci_hi = bootstrap_ci_cohens_d(aw, un)
         bf = bf_cache[i]
         fdr_sig = '*' if sig_fdr[i] else ''
-        if bf > 10: ev = 'Strong H1'
+        if not np.isfinite(bf): ev = 'Undefined'
+        elif bf > 10: ev = 'Strong H1'
         elif bf > 3: ev = 'Moderate H1'
         elif bf > 1: ev = 'Anecdotal H1'
         elif bf > 1/3: ev = 'Anecdotal H0'
@@ -225,7 +256,7 @@ def print_group_diagnostics(all_tests, datasets, bf_cache, keys=None):
     if not keys:
         return diagnostics
 
-    print('\nGrouping-aware robustness (exploratory; condition means use n=4 exact sign-flip tests)')
+    print('\nGrouping-aware diagnostics (exploratory; conditions and animals are not independent dataset replicates)')
     print(f'{"Metric":<12s} {"Band":<11s} | {"signs":>7s} | {"cond d":>8s} {"cond p":>8s} | '
           f'{"monkey mean diffs":>24s} | {"leave-one-condition d":>28s}')
     print('-' * 112)
