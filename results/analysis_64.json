@@ -18635,5 +18635,10 @@
     "src/statistics.py": "df5d3165bd50af736f11a8ba9d432ed7cb48da1a74d06241f3234c4efed3b241",
     "src/visualization.py": "124fe667f0a699a1dabd516bb58cc13d3d4bb06bc462b214e4d1854b095b1454"
   },
-  "layout_note": "Output paths and file organization updated; saved analysis values and computation-time source hashes retained."
+  "layout_note": "Output paths and file organization updated; saved analysis values and computation-time source hashes retained.",
+  "documentation_source_sha256": {
+    "src/data_loading.py": "9436bea64e2a4030527305455fb2af38886b3a2ba1c697aa6bfdd429db6db8a6",
+    "src/statistics.py": "347e768ffe1c7c6c3e87a0f99a227022c578a5d6d40affcccc66e1f6a551d04c"
+  },
+  "documentation_note": "Docstrings in data_loading.py and statistics.py revised. Executable ASTs match the source recorded in layout_source_sha256; computation records and numerical results are retained."
 }

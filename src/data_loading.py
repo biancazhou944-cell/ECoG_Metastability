@@ -94,7 +94,7 @@ def interval_bounds(time, start, end, fs=FS):
 def build_epoch_manifest(datasets):
     """Choose longest valid continuous epoch, independently of channel count.
 
-    Invalid candidates are recorded and warned about, never silently clipped.
+    Out-of-range intervals are logged as rejected candidates with a warning.
     Ties are resolved by session number and start time (earliest first).
     """
     manifest = {'policy': 'longest_valid_continuous', 'fs': FS, 'datasets': {}}

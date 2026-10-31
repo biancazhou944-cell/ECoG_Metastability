@@ -171,7 +171,7 @@ def bayes_factor_paired(aw_vals, un_vals, r=0.707):
 
 
 def collect_tests(kuramoto_results, wpli_results, fcd_results, coal_results, datasets, analysis_bands):
-    """Fail on incomplete/nonfinite pairs; never fabricate measurements or shift IDs."""
+    """Collect complete paired observations and compute statistics for each metric."""
     if len(datasets) < 2:
         raise ValueError('At least two complete dataset pairs are required')
     specifications = []

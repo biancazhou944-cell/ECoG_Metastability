@@ -1,4 +1,4 @@
-"""Run the corrected, streaming 64-channel analysis. See --help for options."""
+"""Run the 64-channel ECoG analysis. See --help for options."""
 
 from src.pipeline import run_cli
 

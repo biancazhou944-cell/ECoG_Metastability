@@ -1,4 +1,4 @@
-"""Run the same corrected workflow with all 128 candidate channels."""
+"""Run the ECoG analysis with all 128 candidate channels."""
 
 from src.pipeline import run_cli
 

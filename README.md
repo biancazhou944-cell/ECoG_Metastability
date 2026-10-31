@@ -1,7 +1,24 @@
-# Large-scale cortical dynamics across anesthesia and sleep
+# Cortical network dynamics across wakefulness, anesthesia, and sleep
 
-Analysis of public NeuroTycho macaque ECoG recordings: awake versus ketamine,
-medetomidine, propofol, and natural sleep in George and Chibi.
+This project examines how cortical phase synchrony, metastability, and functional
+connectivity differ between wakefulness and anesthesia or natural sleep. It uses
+public NeuroTycho ECoG recordings from two macaques, George and Chibi, with three
+anesthetic conditions (ketamine, medetomidine, and propofol) and a sleep recording
+for each animal.
+
+The analysis combines measures of whole-array phase alignment with pairwise
+phase-lagged connectivity. Synchrony describes the average alignment of electrode
+phases; metastability describes how that alignment varies over time. wPLI measures
+consistent phase lags between electrode pairs. Sliding-window connectivity and
+coalition entropy describe changes in connectivity patterns and the diversity of
+channel partitions. Estimates are compared across 64/128-channel configurations
+and full-duration/120-second epochs.
+
+In the saved results, pooled theta synchrony and delta metastability differences
+are negative across all four analysis settings, while broadband wPLI differences
+are small. None of the 17 tests in any setting passes FDR correction. These are
+exploratory comparisons from two animals; see [the analysis report](ANALYSIS_REPORT.md)
+for effect sizes and limitations.
 
 ## Run
 
@@ -23,12 +40,9 @@ Then run both channel settings and generate figures:
 .venv/bin/python scripts/summarize_results.py
 ```
 
-The scripts use the same runner, epoch selection, preprocessing, and definitions.
-The default outputs are `results/` and `figures/`.
-`--resume` reuses a dataset checkpoint only when selected inputs (file size and
-mtime), annotation metadata, channel IDs, durations, package versions, and analysis
-source hashes match. Checkpoints and run logs live in `results/.cache/`, which is
-ignored by Git. Checkpoints hold metrics and QC, not raw ECoG or phase arrays.
+Both channel settings use the same analysis code. Results are written to
+`results/` and figures to `figures/`. `--resume` reuses matching dataset checkpoints
+from `results/.cache/`; see the technical notes below for the matching criteria.
 
 For a short check on real data:
 
@@ -36,10 +50,9 @@ For a short check on real data:
 .venv/bin/python run_pipeline.py --datasets George_KT --durations 120 --output-dir output/smoke
 ```
 
-A one-dataset run produces metrics only; it does not perform group inference.
-Use `--help` to see options for channel count, datasets, durations, and output
-location. A duration must be at least 8 seconds and fit entirely inside each
-selected epoch; short data are not silently treated as duration matched.
+A one-dataset run produces metrics without group statistics. Use `--help` for
+channel count, datasets, durations, and output location. Requested durations must
+be at least 8 seconds and fit entirely within each selected epoch.
 
 ## Data
 
@@ -59,58 +72,77 @@ The directory must contain these eight folders:
 20120814MD_Anesthesia+and+Sleep_George_Toru+Yanagawa_mat_ECoG128/
 ```
 
-The loader checks time axes and channel/time lengths. It selects the longest
-**valid continuous** interval for each state, using the same selection for 64 and
-128 channels. Repeated labels are paired chronologically within sessions. Invalid
-out-of-range candidates are recorded and warned about; if either state has no
-valid candidate, the analysis stops. For the local George sleep recording,
-Session 2's sleep end annotation exceeds the available time axis and is rejected.
-Session 1 supplies the valid longest sleep epoch in both channel settings.
+For each state, the loader selects the longest valid continuous interval from the
+session annotations. The 64- and 128-channel analyses use the same intervals.
+Repeated start/end labels are paired chronologically within sessions; intervals
+outside the recorded time axis are logged as rejected candidates. In the local
+George sleep recording, Session 2's sleep end annotation exceeds the time axis,
+so Session 1 supplies the selected sleep epoch. Each 120-second epoch is taken
+from the start of its selected full interval.
 
 ## Methods
 
-- **wPLI:** at each frequency, compute
+- **Preprocessing:** channel QC uses variance and correlation with the channel
+  average over the first 10 seconds. Nonfinite and flat channels are excluded
+  before forming that average. Channels with variance outside 0.01–10 times the
+  median, an undefined correlation, or an absolute correlation below 0.05 are
+  flagged. The union of the two states' bad-channel masks is applied to both states
+  and both epoch durations. QC is performed separately for each channel setting.
+  Data are downsampled from 1000 to 250 Hz and common-average referenced using the
+  retained channels. Phase extraction uses fourth-order Butterworth bandpass
+  filters applied forward and backward, followed by the Hilbert transform. Full
+  and 120-second epochs are filtered separately. No post-filter edge trimming or
+  temporal artifact rejection is applied.
+- **Synchrony and metastability:** at each sample, compute the Kuramoto order
+  parameter magnitude, `R(t) = abs(mean_channels exp(1j * phase(t)))`. Synchrony is
+  its temporal mean and metastability its temporal variance. These summarize the
+  phase concentration across all retained channels and its variation over time.
+  Both are calculated in delta (1–4 Hz), theta (4–8 Hz), alpha (8–13 Hz), beta
+  (13–30 Hz), and broadband (1–50 Hz).
+- **wPLI:** for each electrode pair and frequency, compute
   `abs(sum_window Im(Sxy)) / sum_window abs(Im(Sxy))`; average equally across
   frequencies within a band, then across unique channel pairs. A zero denominator
-  produces zero. There is no amplitude-dependent absolute threshold. STFT uses
+  produces zero. wPLI is calculated in the same five bands. STFT uses
   512 samples, 256 overlap, constant detrending, no extension/padding, at 250 Hz.
-  All bands share one set of per-frequency pair estimates. See
+  See [Vinck et al. (2011)](https://doi.org/10.1016/j.neuroimage.2011.01.055) and
   [MNE's definition](https://mne.tools/mne-connectivity/stable/generated/mne_connectivity.spectral_connectivity_epochs.html).
-- **Bayes factor:** two-sided paired JZS BF10, Cauchy effect-size scale `r=0.707`,
-  with the inverse-gamma mixture from Rouder et al. (2009), equation 1. Numerical
-  tests use the [Pingouin reference example](https://github.com/raphaelvallat/pingouin/blob/master/src/pingouin/bayesian.py)
-  and an analytical zero-t case.
-- **Coalition entropy:** the leading eigenvector's largest absolute loading is
-  oriented positive; `v` and `-v` therefore encode the same partition. Near-zero
-  loadings are assigned zero using a floating-point tolerance. Shannon entropy
-  is divided by `log2(number of windows)`.
-- **Windowing:** include the last complete window. FCD uses 5-s windows, 3-s steps;
-  coalition entropy uses 2-s windows, 1-s steps. Undefined FCD correlations or
-  insufficient windows raise errors instead of generating silent NaNs.
-- **Preprocessing:** variance and first-10-s correlation QC are shared across
-  channel settings; nonfinite/flat channels are excluded before the QC reference.
-  The union of state-specific bad-channel masks is used for both states and both
-  duration settings within a dataset. QC is repeated within the 128-channel set.
-  Each epoch/duration is downsampled and common-average referenced once, then
-  reused by wPLI and five phase bands. Full and 120-s data are filtered separately.
-  No additional edge trimming or artifact-removal method was introduced.
+- **Functional connectivity dynamics (FCD):** construct PLV matrices in 5-second
+  windows with 3-second steps, then correlate their upper-triangular entries
+  between windows. The reported metric is the variance of the off-diagonal FCD
+  entries. It is calculated in the delta band.
+- **Coalition entropy:** in 2-second windows with 1-second steps, partition channels
+  by the signs of the leading eigenvector of the phase-coherence matrix. Orient
+  its largest absolute loading positive so that `v` and `-v` give the same
+  partition; near-zero loadings are assigned zero using a floating-point
+  tolerance. The Shannon entropy of partition frequencies is divided by
+  `log2(number of windows)`. This measure is also calculated in the delta band.
+
+Both sliding-window measures include the last complete window. FCD requires at
+least two windows with nonconstant connectivity vectors.
 
 ## Statistical interpretation
 
-There are **two animals and eight animal–condition pairs**, not eight independent
-animals. The paired effect sizes, sign-flip tests, bootstrap intervals, and Bayes
-factors are exploratory and retain an exchangeability/independence assumption at
-the pair level. FDR is applied across 17 metrics/bands separately for each analysis
-variant. Condition summaries, leave-one-group effects, and a sign-flip test of the
-two animal-mean differences are saved alongside the paired results. The latter has
-very coarse resolution (minimum two-sided p=0.5) and does not establish population
-significance. Additional animals are needed for such inference.
+Each animal–condition recording contributes a paired difference, defined as
+anesthesia/sleep minus awake. The analysis reports paired Cohen's d, exact
+sign-flip tests, bootstrap 95% confidence intervals, and two-sided paired JZS Bayes
+factors (`BF10`, Cauchy effect-size scale `r=0.707`; Rouder et al., 2009, equation 1).
+FDR correction is applied across the 17 metric/band combinations separately for
+each channel-count and duration setting. Numerical checks for the Bayes factor
+use a [Pingouin reference example](https://github.com/raphaelvallat/pingouin/blob/master/src/pingouin/bayesian.py)
+and an analytical zero-t case.
 
-All metrics require complete, finite, correctly ordered paired observations.
-Missing measurements are never filled with zero. Undefined standardized effects
-are serialized as JSON `null`; figure generation rejects undefined statistics.
-Degenerate bootstrap resamples are warned about and excluded from percentile
-estimation rather than assigned artificially large effect sizes.
+The dataset contains **two animals contributing eight animal–condition pairs**.
+Repeated conditions within animals limit the independence of those pairs, so
+pair-level p values, intervals, and Bayes factors are exploratory. Condition
+summaries, leave-one-condition/animal effects, and a sign-flip test of animal-mean
+differences provide additional checks. With only two animal means, the smallest
+possible two-sided sign-flip p value is 0.5. Population-level inference would
+require more animals.
+
+Statistical calculations require complete, finite paired observations in dataset
+order. Undefined standardized effects are stored as JSON `null`. Bootstrap
+resamples with undefined effect sizes are counted, warned about, and excluded
+from percentile estimation. Figures require finite effect sizes and intervals.
 
 ## Outputs and traceability
 
@@ -134,17 +166,21 @@ figures/
 ANALYSIS_REPORT.md            Current result summary
 ```
 
-JSON files retain full precision, per-state/per-dataset values, physical channel
-IDs, QC reasons, epoch provenance, package/source versions, parameters, and timing.
-Epoch selections are embedded in the analysis JSON, without a duplicate manifest
-file. CSV files are convenient statistical summaries. Figures read JSON directly, reject mismatched epoch manifests,
-compute FDR annotations from the current results, and use the same mappable for
-topographic points and their colorbar. Source hashes and color limits are saved in
-`figures/provenance.json`.
+JSON files contain per-state and per-dataset measurements, channel IDs, QC records,
+selected epochs, analysis parameters, software versions, source hashes, and timing.
+CSV files summarize the statistical results. Figures are drawn from the JSON
+files; input hashes and color limits are recorded in `figures/provenance.json`.
 
-Saved results retain the source hashes recorded during computation. A layout-only
-reorganization is recorded separately in `layout_source_sha256`; numerical results
-are retained without being presented as a fresh analysis run.
+## Technical notes
+
+Checkpoints contain metrics and QC records. Reuse requires matching input file
+sizes and modification times, annotations, channel IDs, durations, package
+versions, and computation-source hashes. Cache files and run logs are stored in
+`results/.cache/` and excluded from Git.
+
+`source_sha256` records the code used for computation. Hashes from later file-layout
+and docstring revisions are stored separately as `layout_source_sha256` and
+`documentation_source_sha256`, with notes describing those revisions.
 
 The runner holds one dataset at a time and one frequency band's phases at a time.
 STFT stores only requested frequencies and processes channel pairs in small blocks.
@@ -153,6 +189,8 @@ MAT channel file (MAT v5 files still require decompressing that channel).
 For reproducible single-thread timing, set `OPENBLAS_NUM_THREADS=1`,
 `VECLIB_MAXIMUM_THREADS=1`, and `OMP_NUM_THREADS=1` before launching Python.
 
-Reference dataset: Yanagawa T, Chao ZC, Hasegawa N, Fujii N (2013).
+## Dataset reference
+
+Yanagawa T, Chao ZC, Hasegawa N, Fujii N (2013).
 *Large-scale information flow in conscious and unconscious states: an ECoG study
 in monkeys*. PLoS ONE 8:e80845. https://doi.org/10.1371/journal.pone.0080845

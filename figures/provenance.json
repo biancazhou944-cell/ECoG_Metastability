@@ -11,5 +11,12 @@
     "heatmap_vmin": -0.21607054149413718,
     "heatmap_vmax": 0.21607054149413718
   },
-  "schema_version": 2
+  "schema_version": 2,
+  "result_metadata_revision": {
+    "source_sha256": {
+      "analysis_64.json": "4d153996e9589c3d32d839d162533a2c204c48de5f0523d4d0d5a359b196422e",
+      "analysis_128.json": "6610ce8689d25b6c36eb41de14d41defd68d1871a8d653b1fc24716cfb85a883"
+    },
+    "note": "Result metadata updated for docstring revisions. Plotted data and plotting code are unchanged."
+  }
 }
